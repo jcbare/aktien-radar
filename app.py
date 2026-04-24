@@ -1,48 +1,43 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import time
 
-st.set_page_config(page_title="Deep-Scan 2026", layout="wide")
+# --- APP KONFIGURATION ---
+st.set_page_config(page_title="Broker-Radar 2026", layout="wide")
 
-st.title("🌊 Deep-Ocean Scanner")
-st.write("Suche in den großen Indizes nach den Nadeln im Heuhaufen.")
+st.title("📱 Broker-Radar (N26, TR, Revolut)")
+st.write("Scanne handelbare Wachstums-Werte nach Volumen-Anomalien.")
 
 # --- FILTER ---
 st.sidebar.header("Scan-Parameter")
-index_choice = st.sidebar.selectbox("Welchen Markt scannen?", ["S&P 500 (US Tech & Industrie)", "NASDAQ 100 (Tech-Giganten)"])
-min_growth = st.sidebar.slider("Wachstum (%)", 0.0, 20.0, 4.0)
-min_vol = st.sidebar.slider("Volumen-Faktor", 1.0, 10.0, 2.0)
+min_growth = st.sidebar.slider("Wachstum heute (%)", 0.0, 20.0, 3.0)
+min_vol = st.sidebar.slider("Volumen-Faktor (x-fach)", 1.0, 10.0, 2.0)
+max_price = st.sidebar.number_input("Max. Preis (€/$)", value=500.0)
 
-# --- FUNKTION: TICKER AUTOMATISCH LADEN ---
-@st.cache_data # Das sorgt dafür, dass die Liste nicht bei jedem Klick neu geladen wird
-def get_ticker_list(choice):
-    if choice == "S&P 500 (US Tech & Industrie)":
-        # Lädt die Liste direkt von Wikipedia (Standard-Trick für Trader)
-        url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-        table = pd.read_html(url)
-        return table[0]['Symbol'].tolist()
-    else:
-        url = "https://en.wikipedia.org/wiki/Nasdaq-100"
-        table = pd.read_html(url)
-        # In Wikipedia ist das die zweite Tabelle (Index 4)
-        return table[4]['Ticker'].tolist()
+# --- FUNKTION: LOKALE DATEI LADEN ---
+def load_local_tickers():
+    try:
+        with open("tickers.txt", "r") as f:
+            content = f.read()
+            # Entfernt Leerzeichen und teilt bei Kommas
+            return [t.strip().upper() for t in content.replace("\n", "").split(",") if t.strip()]
+    except:
+        return ["AAPL", "TSLA", "NVDA"] # Notfall-Liste
 
-ticker_list = get_ticker_list(index_choice)
-st.info(f"Bereit zum Scannen von {len(ticker_list)} Unternehmen aus dem {index_choice}.")
+ticker_list = load_local_tickers()
+st.info(f"Scan-Bereit: {len(ticker_list)} Aktien aus deiner Broker-Liste.")
 
-if st.button('🔥 Großen Markte-Scan starten'):
+if st.button('🚀 Scan starten'):
     results = []
     progress_bar = st.progress(0)
     status_text = st.empty()
     
-    # Wir scannen in 10er-Blöcken, um Yahoo nicht zu "ärgern"
     for i, t in enumerate(ticker_list):
-        status_text.text(f"Analysiere: {t} ({i+1}/{len(ticker_list)})")
+        status_text.text(f"Checke: {t}")
         try:
-            # Schneller Abruf: nur die letzten 2 Tage
-            s = yf.Ticker(t)
-            hist = s.history(period="20d")
+            # Schneller Check der letzten 5 Tage
+            ticker_obj = yf.Ticker(t)
+            hist = ticker_obj.history(period="5d")
             
             if len(hist) < 2: continue
             
@@ -54,10 +49,10 @@ if st.button('🔥 Großen Markte-Scan starten'):
             change = ((close_today - close_yesterday) / close_yesterday) * 100
             v_ratio = vol_today / vol_avg
             
-            if change >= min_growth and v_ratio >= min_vol:
+            if change >= min_growth and v_ratio >= min_vol and close_today <= max_price:
                 results.append({
                     "Ticker": t,
-                    "Preis": f"{close_today:.2f}$",
+                    "Preis": f"{close_today:.2f}",
                     "Wachstum": f"{change:.2f}%",
                     "Volumen": f"{v_ratio:.1f}x"
                 })
@@ -66,11 +61,10 @@ if st.button('🔥 Großen Markte-Scan starten'):
         
         progress_bar.progress((i + 1) / len(ticker_list))
     
-    status_text.text("Scan abgeschlossen!")
+    status_text.text("Scan beendet!")
     
     if results:
-        st.balloons() # Kleiner Erfolgseffekt
-        st.success(f"{len(results)} Nadeln im Heuhaufen gefunden!")
-        st.table(pd.DataFrame(results))
+        st.success(f"{len(results)} Treffer gefunden!")
+        st.dataframe(pd.DataFrame(results), use_container_width=True)
     else:
-        st.warning("Keine Treffer mit diesen harten Filtern.")
+        st.warning("Keine Treffer. Versuche die Filter zu lockern.")
