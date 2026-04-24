@@ -1,90 +1,104 @@
-import streamlit as st
-import yfinance as yf
-import pandas as pd
-
-# --- APP KONFIGURATION ---
-st.set_page_config(page_title="Turbo-Radar 2026", layout="wide")
-
-st.title("⚡ Turbo-Radar: High-Growth Scanner")
-st.markdown("Optimiert für große Listen. Scanne hunderte Aktien in Sekunden.")
-
-# --- SEITENLEISTE ---
-st.sidebar.header("Filter-Einstellungen")
-min_growth = st.sidebar.slider("Wachstum heute (%)", 0.0, 20.0, 3.0)
-min_vol = st.sidebar.slider("Volumen-Faktor (Anomalie)", 1.0, 10.0, 2.0)
-max_price = st.sidebar.number_input("Max. Preis (€/$)", value=1000.0)
-
-# --- FUNKTION: TICKER & BROKER LADEN ---
-def load_ticker_data():
-    ticker_dict = {}
-    try:
-        with open("tickers.txt", "r") as f:
-            for line in f:
-                line = line.strip()
-                if not line or "|" not in line: continue
-                parts = line.split("|")
-                sym = parts[0].strip().upper()
-                ticker_dict[sym] = parts[1].strip()
-        return ticker_dict
-    except:
-        return {"AAPL": "TR,N26,REV"}
-
-ticker_map = load_ticker_data()
-ticker_list = list(ticker_map.keys())
-
-st.info(f"Scan-Bereit: {len(ticker_list)} Aktien geladen.")
-
-if st.button('🚀 Turbo-Scan starten'):
-    status_text = st.empty()
-    status_text.text("Lade Marktdaten für alle Aktien herunter...")
-    
-    try:
-        # BATCH DOWNLOAD: Alle Ticker auf einmal abfragen (extrem schnell)
-        # Wir holen die letzten 20 Tage für den Volumen-Durchschnitt
-        all_data = yf.download(ticker_list, period="20d", interval="1d", group_by='ticker', progress=False)
-        
-        results = []
-        progress_bar = st.progress(0)
-        
-        for i, t in enumerate(ticker_list):
-            try:
-                # Daten für diesen spezifischen Ticker aus dem Paket ziehen
-                df = all_data[t]
-                
-                # Prüfen ob Daten da sind
-                if df.empty or len(df) < 2: continue
-                
-                close_today = df['Close'].iloc[-1]
-                close_yesterday = df['Close'].iloc[-2]
-                vol_today = df['Volume'].iloc[-1]
-                vol_avg = df['Volume'].iloc[:-1].mean()
-                
-                change = ((close_today - close_yesterday) / close_yesterday) * 100
-                v_ratio = vol_today / vol_avg
-                
-                if change >= min_growth and v_ratio >= min_vol and close_today <= max_price:
-                    results.append({
-                        "Ticker": t,
-                        "Broker": ticker_map.get(t, "-"),
-                        "Preis": f"{close_today:.2f}",
-                        "Wachstum": f"{change:.2f}%",
-                        "Volumen": f"{v_ratio:.1f}x"
-                    })
-            except:
-                continue
-            
-            progress_bar.progress((i + 1) / len(ticker_list))
-            
-        status_text.text("Scan abgeschlossen.")
-        
-        if results:
-            st.success(f"{len(results)} Treffer gefunden!")
-            st.dataframe(pd.DataFrame(results), use_container_width=True)
-        else:
-            st.warning("Keine Treffer unter den aktuellen Bedingungen.")
-            
-    except Exception as e:
-        st.error(f"Fehler beim Batch-Download: {e}")
-
-st.divider()
-st.caption("Dieses Skript nutzt Batch-Abfragen für maximale Performance.")
+AAPL|TR,N26,REV
+TSLA|TR,N26,REV
+NVDA|TR,N26,REV
+AMZN|TR,N26,REV
+MSFT|TR,N26,REV
+META|TR,N26,REV
+GOOGL|TR,N26,REV
+NFLX|TR,N26,REV
+ADBE|TR,N26,REV
+PYPL|TR,N26,REV
+SQ|TR,REV
+SHOP|TR,REV
+SNOW|TR,REV
+PLTR|TR,REV
+U|TR,REV
+RIVN|TR,REV
+LCID|TR,REV
+NIO|TR,REV
+XPEV|TR,REV
+LI|TR,REV
+TSM|TR,REV
+ASML|TR,REV
+SAP|TR,N26
+IFX.DE|TR,N26
+SIE.DE|TR,N26
+DTE.DE|TR,N26
+BMW.DE|TR,N26
+VOW3.DE|TR,N26
+MBG.DE|TR,N26
+RHM.DE|TR,N26
+MTX.DE|TR,N26
+AIR.DE|TR,N26
+P911.DE|TR,N26
+ZAL.DE|TR,N26
+HFG.DE|TR,N26
+SY1.DE|TR,N26
+BNR.DE|TR,N26
+COV.DE|TR,N26
+CBK.DE|TR,N26
+DBK.DE|TR,N26
+ADS.DE|TR,N26
+PUMA.DE|TR,N26
+COIN|TR,REV
+MARA|TR,REV
+RIOT|TR,REV
+HIVE|TR,REV
+CLSK|TR,REV
+MSTR|TR,REV
+HOOD|TR,REV
+SOFI|TR,REV
+UPST|TR,REV
+AFRM|TR,REV
+OPEN|TR,REV
+RUN|TR,REV
+SPWR|TR,REV
+FSLR|TR,REV
+ENPH|TR,REV
+SEDG|TR,REV
+SNDL|REV
+TLRY|TR,REV
+ACB|TR,REV
+CGC|TR,REV
+GRWG|TR,REV
+DNA|TR,REV
+AMRS|TR,REV
+BYND|TR,REV
+OTLY|TR,REV
+DKNG|TR,REV
+PENN|TR,REV
+TTD|TR,REV
+PATH|TR,REV
+AI|TR,REV
+BBAI|TR,REV
+SOUN|TR,REV
+GWRE|TR,REV
+SMCI|TR,REV
+ARM|TR,REV
+AMD|TR,REV
+INTC|TR,REV
+MU|TR,REV
+AMAT|TR,REV
+LRCX|TR,REV
+KLAC|TR,REV
+MELI|TR,REV
+SE|TR,REV
+NU|TR,REV
+GRAB|TR,REV
+CPNG|TR,REV
+MDB|TR,REV
+TEAM|TR,REV
+DDOG|TR,REV
+NET|TR,REV
+CRWD|TR,REV
+OKTA|TR,REV
+ZS|TR,REV
+GME|TR,REV
+AMC|TR,REV
+BB|TR,REV
+NKLA|TR,REV
+QS|TR,REV
+CHPT|TR,REV
+EVGO|TR,REV
+BE|TR,REV
+PLUG|TR,REV
