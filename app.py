@@ -1,13 +1,12 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import pandas_ta as ta # WICHTIG: Erfordert pandas_ta in requirements.txt
 
 # --- APP KONFIGURATION ---
 st.set_page_config(page_title="Prognose-Radar 2026", layout="wide")
 
 st.title("🔮 Prognose-Radar: Next-Day Momentum")
-st.markdown("Dieses Tool berechnet die Wahrscheinlichkeit einer Trendfortsetzung für den nächsten Handelstag.")
+st.markdown("Dieses Tool berechnet Wahrscheinlichkeiten ohne externe Zusatz-Bibliotheken.")
 
 # --- SEITENLEISTE ---
 st.sidebar.header("Strategie-Parameter")
@@ -15,24 +14,34 @@ timeframe = st.sidebar.selectbox("Basis-Zeitraum für Wachstum", [1, 5, 10], ind
 min_growth = st.sidebar.slider("Mindest-Wachstum (%)", 0.0, 30.0, 3.0)
 min_vol = st.sidebar.slider("Volumen-Faktor", 1.0, 10.0, 2.0)
 
-# --- FUNKTION: SCORE BERECHNEN (DIE PROGNOSE-LOGIK) ---
+# --- FUNKTION: RSI MANUELL BERECHNEN ---
+def calculate_rsi(series, period=14):
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    return 100 - (100 / (1 + rs))
+
+# --- FUNKTION: SCORE BERECHNEN ---
 def calculate_momentum_score(df):
     score = 0
-    # 1. RSI Check (Trendstärke messen)
-    rsi = df.ta.rsi(length=14).iloc[-1]
-    if 50 < rsi < 75: score += 40 # Optimaler Trendbereich
-    elif rsi >= 75: score += 10    # Heißgelaufen (Rückschlaggefahr)
+    # 1. RSI Check
+    rsi_series = calculate_rsi(df['Close'])
+    rsi = rsi_series.iloc[-1]
     
-    # 2. Strong Close Check (Käuferinteresse zum Börsenschluss)
+    if 50 < rsi < 75: score += 40
+    elif rsi >= 75: score += 10
+    
+    # 2. Strong Close Check
     day_high = df['High'].iloc[-1]
     day_low = df['Low'].iloc[-1]
     day_close = df['Close'].iloc[-1]
     
-    position_in_range = (day_close - day_low) / (day_high - day_low) if (day_high - day_low) != 0 else 0
-    if position_in_range > 0.8: score += 40 # Schließt am Tageshoch = Sehr Bullisch
-    elif position_in_range > 0.5: score += 20
+    pos = (day_close - day_low) / (day_high - day_low) if (day_high - day_low) != 0 else 0
+    if pos > 0.8: score += 40
+    elif pos > 0.5: score += 20
     
-    # 3. Volumen-Bestätigung
+    # 3. Volumen
     vol_today = df['Volume'].iloc[-1]
     vol_avg = df['Volume'].iloc[-20:-1].mean()
     if vol_today > vol_avg * 3: score += 20
@@ -58,10 +67,9 @@ ticker_list = list(ticker_map.keys())
 
 if st.button('🚀 Prognose-Scan starten'):
     status = st.empty()
-    status.text("Analysiere Marktdaten und berechne Wahrscheinlichkeiten...")
+    status.text("Lade Daten und berechne Prognose...")
     
     try:
-        # Batch-Download für maximale Geschwindigkeit
         all_data = yf.download(ticker_list, period="40d", group_by='ticker', progress=False)
         results = []
         
@@ -79,26 +87,25 @@ if st.button('🚀 Prognose-Scan starten'):
                 if growth >= min_growth and vol_ratio >= min_vol:
                     score, rsi = calculate_momentum_score(df)
                     
-                    if score >= 70: trend = "🟢 STARK (Kaufen)"
-                    elif score >= 40: trend = "🟡 NEUTRAL (Beobachten)"
-                    else: trend = "🔴 SCHWACH (Vorsicht)"
+                    if score >= 70: trend = "🟢 STARK"
+                    elif score >= 40: trend = "🟡 NEUTRAL"
+                    else: trend = "🔴 SCHWACH"
                     
                     results.append({
                         "Ticker": t,
                         "Broker": ticker_map.get(t, "-"),
                         "Wachstum": f"{growth:.1f}%",
-                        "RSI": f"{rsi:.1f}",
-                        "Prognose-Score": f"{score}%",
-                        "Tendenz": trend
+                        "RSI": f"{rsi:.1f}" if not pd.isna(rsi) else "N/A",
+                        "Score": f"{score}%",
+                        "Prognose": trend
                     })
             except: continue
             
         status.text("Scan abgeschlossen.")
         if results:
-            # Sortierung nach dem höchsten Prognose-Score
-            st.dataframe(pd.DataFrame(results).sort_values(by="Prognose-Score", ascending=False), use_container_width=True)
+            st.dataframe(pd.DataFrame(results).sort_values(by="Score", ascending=False), use_container_width=True)
         else:
-            st.warning("Keine Treffer gefunden. Lockere die Filter in der Seitenleiste.")
+            st.warning("Keine Treffer.")
             
     except Exception as e:
-        st.error(f"Kritischer Fehler: {e}")
+        st.error(f"Fehler: {e}")
