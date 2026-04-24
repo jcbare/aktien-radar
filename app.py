@@ -5,37 +5,51 @@ import pandas as pd
 # --- APP KONFIGURATION ---
 st.set_page_config(page_title="Broker-Radar 2026", layout="wide")
 
-st.title("📱 Broker-Radar (N26, TR, Revolut)")
-st.write("Scanne handelbare Wachstums-Werte nach Volumen-Anomalien.")
+st.title("📱 Broker-Radar: Wo kann ich kaufen?")
+st.markdown("Dieser Scanner zeigt dir direkt an, ob ein Fund bei **TR, N26 oder Revolut** handelbar ist.")
 
-# --- FILTER ---
-st.sidebar.header("Scan-Parameter")
-min_growth = st.sidebar.slider("Wachstum heute (%)", 0.0, 20.0, 3.0)
-min_vol = st.sidebar.slider("Volumen-Faktor (x-fach)", 1.0, 10.0, 2.0)
-max_price = st.sidebar.number_input("Max. Preis (€/$)", value=500.0)
+# --- SEITENLEISTE ---
+st.sidebar.header("Filter-Einstellungen")
+min_growth = st.sidebar.slider("Wachstum heute (%)", 0.0, 20.0, 2.0)
+min_vol = st.sidebar.slider("Volumen-Faktor (Anomalie)", 1.0, 10.0, 2.0)
+max_price = st.sidebar.number_input("Max. Preis (€/$)", value=1000.0)
 
-# --- FUNKTION: LOKALE DATEI LADEN ---
-def load_local_tickers():
+# --- FUNKTION: TICKER & BROKER LADEN ---
+def load_ticker_data():
+    ticker_dict = {}
     try:
         with open("tickers.txt", "r") as f:
-            content = f.read()
-            # Entfernt Leerzeichen und teilt bei Kommas
-            return [t.strip().upper() for t in content.replace("\n", "").split(",") if t.strip()]
-    except:
-        return ["AAPL", "TSLA", "NVDA"] # Notfall-Liste
+            for line in f:
+                line = line.strip()
+                if not line: continue
+                
+                # Wenn ein | vorhanden ist, trennen wir Ticker und Broker
+                if "|" in line:
+                    parts = line.split("|")
+                    sym = parts[0].strip().upper()
+                    broker = parts[1].strip()
+                    ticker_dict[sym] = broker
+                else:
+                    # Falls kein | da ist, schreiben wir "Alle?"
+                    ticker_dict[line.upper()] = "Unbekannt"
+        return ticker_dict
+    except Exception as e:
+        st.error(f"Fehler beim Laden der Datei: {e}")
+        return {"AAPL": "TR,N26,REV"}
 
-ticker_list = load_local_tickers()
-st.info(f"Scan-Bereit: {len(ticker_list)} Aktien aus deiner Broker-Liste.")
+ticker_map = load_ticker_data()
+ticker_list = list(ticker_map.keys())
 
-if st.button('🚀 Scan starten'):
+st.info(f"Scan-Bereit: {len(ticker_list)} beobachtete Aktien.")
+
+if st.button('🚀 Suche starten'):
     results = []
     progress_bar = st.progress(0)
     status_text = st.empty()
     
     for i, t in enumerate(ticker_list):
-        status_text.text(f"Checke: {t}")
+        status_text.text(f"Analysiere: {t}...")
         try:
-            # Schneller Check der letzten 5 Tage
             ticker_obj = yf.Ticker(t)
             hist = ticker_obj.history(period="5d")
             
@@ -52,19 +66,22 @@ if st.button('🚀 Scan starten'):
             if change >= min_growth and v_ratio >= min_vol and close_today <= max_price:
                 results.append({
                     "Ticker": t,
+                    "Broker": ticker_map.get(t, "-"), # Hier holen wir die Broker-Info
                     "Preis": f"{close_today:.2f}",
                     "Wachstum": f"{change:.2f}%",
-                    "Volumen": f"{v_ratio:.1f}x"
+                    "Volumen-Faktor": f"{v_ratio:.1f}x"
                 })
         except:
             pass
         
         progress_bar.progress((i + 1) / len(ticker_list))
     
-    status_text.text("Scan beendet!")
+    status_text.text("Scan abgeschlossen.")
     
     if results:
         st.success(f"{len(results)} Treffer gefunden!")
-        st.dataframe(pd.DataFrame(results), use_container_width=True)
+        # Wir zeigen die Tabelle an und heben die Broker-Spalte hervor
+        df_res = pd.DataFrame(results)
+        st.dataframe(df_res, use_container_width=True)
     else:
-        st.warning("Keine Treffer. Versuche die Filter zu lockern.")
+        st.warning("Keine Treffer. Tipp: Setze das Wachstum auf 1% oder 2%, um die Funktion zu testen.")
