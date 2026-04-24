@@ -1,98 +1,106 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import pandas_ta as ta # Neu für die technische Analyse
 
 # --- APP KONFIGURATION ---
-st.set_page_config(page_title="Multi-Timeframe Radar", layout="wide")
+st.set_page_config(page_title="Prognose-Radar 2026", layout="wide")
 
-st.title("📈 Multi-Timeframe Radar")
-st.markdown("Vergleiche das Wachstum über verschiedene Zeitspannen.")
+st.title("🔮 Prognose-Radar: Next-Day Momentum")
+st.markdown("Dieses Tool berechnet die Wahrscheinlichkeit einer Trendfortsetzung für den nächsten Handelstag.")
 
 # --- SEITENLEISTE ---
-st.sidebar.header("Zeitspanne & Filter")
+st.sidebar.header("Strategie-Parameter")
+timeframe = st.sidebar.selectbox("Basis-Zeitraum für Wachstum", [1, 5, 10], index=0)
+min_growth = st.sidebar.slider("Mindest-Wachstum (%)", 0.0, 30.0, 3.0)
+min_vol = st.sidebar.slider("Volumen-Faktor", 1.0, 10.0, 2.0)
 
-# NEU: Auswahl der Zeitspanne
-timeframe = st.sidebar.selectbox(
-    "Wachstum über welchen Zeitraum?",
-    options=[1, 5, 10, 20],
-    format_func=lambda x: f"{x} Handelstag(e)"
-)
+# --- FUNKTION: SCORE BERECHNEN ---
+def calculate_momentum_score(df):
+    score = 0
+    # 1. RSI Check (Sweet Spot zwischen 50 und 75)
+    rsi = df.ta.rsi(length=14).iloc[-1]
+    if 50 < rsi < 75: score += 40
+    elif rsi >= 75: score += 10 # Überkauft-Gefahr
+    
+    # 2. Close-to-High Check (Schlusskurs nahe Tageshoch?)
+    day_high = df['High'].iloc[-1]
+    day_low = df['Low'].iloc[-1]
+    day_close = df['Close'].iloc[-1]
+    
+    # Wie nah am Hoch? (0 = Tief, 1 = Hoch)
+    position_in_range = (day_close - day_low) / (day_high - day_low) if (day_high - day_low) != 0 else 0
+    if position_in_range > 0.8: score += 40 # Starker Schlusskurs
+    elif position_in_range > 0.5: score += 20
+    
+    # 3. Volumen-Bestätigung
+    vol_today = df['Volume'].iloc[-1]
+    vol_avg = df['Volume'].iloc[-20:-1].mean()
+    if vol_today > vol_avg * 3: score += 20
+    elif vol_today > vol_avg * 1.5: score += 10
+    
+    return score, rsi
 
-min_growth = st.sidebar.slider(f"Mindest-Wachstum über {timeframe} Tag(e) (%)", 0.0, 50.0, 5.0)
-min_vol = st.sidebar.slider("Volumen-Faktor (nur heute)", 1.0, 10.0, 2.0)
-max_price = st.sidebar.number_input("Max. Preis (€/$)", value=500.0)
-
-# --- FUNKTION: TICKER & BROKER LADEN ---
+# --- TICKER LADEN ---
 def load_ticker_data():
     ticker_dict = {}
     try:
         with open("tickers.txt", "r") as f:
             for line in f:
                 line = line.strip()
-                if not line or "|" not in line: continue
-                parts = line.split("|")
-                sym = parts[0].strip().upper()
-                ticker_dict[sym] = parts[1].strip()
+                if "|" in line:
+                    parts = line.split("|")
+                    ticker_dict[parts[0].strip().upper()] = parts[1].strip()
         return ticker_dict
-    except:
-        return {"AAPL": "TR,N26,REV"}
+    except: return {"AAPL": "TR,N26,REV"}
 
 ticker_map = load_ticker_data()
 ticker_list = list(ticker_map.keys())
 
-st.info(f"Scan-Bereit: {len(ticker_list)} Aktien geladen.")
-
-if st.button('🚀 Analyse starten'):
-    status_text = st.empty()
-    status_text.text("Lade Marktdaten herunter...")
+if st.button('🚀 Prognose-Scan starten'):
+    status = st.empty()
+    status.text("Analysiere Marktdaten und berechne Wahrscheinlichkeiten...")
     
     try:
-        # Wir laden 40 Tage, um auch bei 20-Tage-Wachstum genug Puffer zu haben
-        all_data = yf.download(ticker_list, period="40d", interval="1d", group_by='ticker', progress=False)
-        
+        all_data = yf.download(ticker_list, period="40d", group_by='ticker', progress=False)
         results = []
-        progress_bar = st.progress(0)
         
-        for i, t in enumerate(ticker_list):
+        for t in ticker_list:
             try:
-                df = all_data[t]
+                df = all_data[t].dropna()
+                if len(df) < 20: continue
                 
-                # Prüfen, ob wir genug Daten für den gewählten Zeitraum haben
-                if df.empty or len(df) <= timeframe: continue
-                
-                # BERECHNUNG
+                # Wachstum
                 price_now = df['Close'].iloc[-1]
-                price_then = df['Close'].iloc[-1 - timeframe] # Hier springen wir zurück!
+                price_prev = df['Close'].iloc[-1 - timeframe]
+                growth = ((price_now - price_prev) / price_prev) * 100
                 
-                vol_today = df['Volume'].iloc[-1]
-                vol_avg = df['Volume'].iloc[-21:-1].mean() # Durchschnitt der letzten 20 Tage vor heute
+                # Volumen
+                vol_ratio = df['Volume'].iloc[-1] / df['Volume'].iloc[-21:-1].mean()
                 
-                growth = ((price_now - price_then) / price_then) * 100
-                v_ratio = vol_today / vol_avg
-                
-                if growth >= min_growth and v_ratio >= min_vol and price_now <= max_price:
+                if growth >= min_growth and vol_ratio >= min_vol:
+                    score, rsi = calculate_momentum_score(df)
+                    
+                    # Prognose-Label
+                    if score >= 70: trend = "🟢 STARK (Kaufen)"
+                    elif score >= 40: trend = "🟡 NEUTRAL (Beobachten)"
+                    else: trend = "🔴 SCHWACH (Vorsicht)"
+                    
                     results.append({
                         "Ticker": t,
                         "Broker": ticker_map.get(t, "-"),
-                        "Preis Aktuell": f"{price_now:.2f}",
-                        f"Wachstum ({timeframe}d)": f"{growth:.2f}%",
-                        "Volumen-Faktor": f"{v_ratio:.1f}x"
+                        "Wachstum": f"{growth:.1f}%",
+                        "RSI": f"{rsi:.1f}",
+                        "Prognose-Score": f"{score}%",
+                        "Tendenz": trend
                     })
-            except:
-                continue
+            except: continue
             
-            progress_bar.progress((i + 1) / len(ticker_list))
-            
-        status_text.text("Scan abgeschlossen.")
-        
+        status.text("Scan abgeschlossen.")
         if results:
-            st.success(f"{len(results)} Treffer gefunden!")
-            st.dataframe(pd.DataFrame(results), use_container_width=True)
+            st.dataframe(pd.DataFrame(results).sort_values(by="Prognose-Score", ascending=False), use_container_width=True)
         else:
-            st.warning(f"Keine Aktie mit +{min_growth}% über {timeframe} Tage gefunden.")
+            st.warning("Keine Treffer mit diesen Kriterien.")
             
     except Exception as e:
         st.error(f"Fehler: {e}")
-
-st.divider()
-st.caption(f"Die Berechnung vergleicht den heutigen Preis mit dem Schlusskurs von vor {timeframe} Handelstagen.")
