@@ -3,39 +3,39 @@ import yfinance as yf
 import pandas as pd
 
 # --- APP KONFIGURATION ---
-st.set_page_config(page_title="Aktien-Radar 2026", page_icon="📈", layout="wide")
+st.set_page_config(page_title="Profi-Radar 2026", page_icon="🔍", layout="wide")
 
-st.title("🚀 Dein High-Growth Aktien-Radar")
-st.markdown("""
-Dieses Tool scannt Aktien nach **Wachstums-Explosionen** und **ungewöhnlichem Handelsvolumen**. 
-Ideal, um frühzeitig auf Ausbrüche aufmerksam zu werden.
-""")
+st.title("🔍 Deep-Scan: High-Growth Radar")
+st.markdown("Wir scannen jetzt ein größeres Universum nach Volatilität und Volumen.")
 
-# --- SEITENLEISTE FÜR EINSTELLUNGEN ---
+# --- SEITENLEISTE ---
 st.sidebar.header("Filter-Einstellungen")
+min_growth = st.sidebar.slider("Mindest-Wachstum heute (%)", 0.0, 30.0, 3.0)
+min_vol_factor = st.sidebar.slider("Volumen-Faktor (x-fach)", 1.0, 10.0, 2.5)
+max_price = st.sidebar.number_input("Maximaler Preis (€/$)", value=15.0)
 
-min_growth = st.sidebar.slider("Mindest-Wachstum heute (%)", 0.0, 50.0, 5.0)
-min_vol_factor = st.sidebar.slider("Volumen-Anomalie (x-facher Durchschnitt)", 1.0, 10.0, 3.0)
-max_price = st.sidebar.number_input("Maximaler Preis (€/$)", value=20.0)
+# --- TICKER-QUELLE ---
+st.subheader("Aktien-Auswahl")
+ticker_input = st.text_area(
+    "Ticker-Symbole (mit Leerzeichen oder Komma getrennt)", 
+    value="MARA, RIOT, PLTR, NIO, DNA, SOFI, AI, BBAI, SOUN, GME, AMC, SNDL, TLRY, ACB, OGI, GRWG, HYLN, WKHS, NKLA, QS, CHPT, EVGO, RUN, SPWR, FSLR"
+)
 
-# --- AKTIENLISTE ---
-tickers = [
-    'AAPL', 'TSLA', 'NVDA', 'PLTR', 'NIO', 'MARA', 'RIOT', 'SNDL',
-    'A2AAE2.DE', 'DB1.DE', 'CBK.DE', 'VOW3.DE', 'MBG.DE', 'IFX.DE'
-]
+# Automatische Aufbereitung der Liste
+tickers = [t.strip().upper() for t in ticker_input.replace(",", " ").split()]
 
-if st.button('🚀 Markt jetzt scannen'):
-    st.write("Suche läuft... Bitte einen Moment Geduld.")
+if st.button('🚀 Intensiv-Scan starten'):
+    st.write(f"Scanne {len(tickers)} Unternehmen...")
     results = []
     progress_bar = st.progress(0)
     
     for index, t in enumerate(tickers):
         try:
+            # Wir nutzen 'period=2d', das geht schneller beim Scannen
             ticker_obj = yf.Ticker(t)
             data = ticker_obj.history(period="20d")
             
-            if len(data) < 5:
-                continue
+            if len(data) < 5: continue
                 
             current_close = data['Close'].iloc[-1]
             last_close = data['Close'].iloc[-2]
@@ -45,13 +45,14 @@ if st.button('🚀 Markt jetzt scannen'):
             growth = ((current_close - last_close) / last_close) * 100
             vol_ratio = current_vol / avg_vol
             
+            # Die Logik
             if growth >= min_growth and vol_ratio >= min_vol_factor and current_close <= max_price:
                 results.append({
                     "Ticker": t,
                     "Preis": f"{current_close:.2f}",
-                    "Wachstum (%)": f"{growth:.2f}%",
+                    "Wachstum": f"{growth:.2f}%",
                     "Volumen-Faktor": f"{vol_ratio:.1f}x",
-                    "Info": "🔥 Signal gefunden"
+                    "Tag": data.index[-1].strftime('%Y-%m-%d')
                 })
         except:
             pass
@@ -60,10 +61,9 @@ if st.button('🚀 Markt jetzt scannen'):
 
     if results:
         st.success(f"Gefunden: {len(results)} Treffer!")
-        df_res = pd.DataFrame(results)
-        st.dataframe(df_res, use_container_width=True)
+        st.dataframe(pd.DataFrame(results), use_container_width=True)
     else:
-        st.warning("Keine Aktie erfüllt aktuell die Kriterien.")
+        st.warning("Keine Treffer. Tipp: Verringere das 'Mindest-Wachstum' oder erweitere die Ticker-Liste.")
 
 st.divider()
-st.caption("Datenquelle: Yahoo Finance. Keine Anlageberatung.")
+st.info("💡 Profi-Tipp: Kopiere Ticker-Listen von Seiten wie 'Finviz Top Gainers' und füge sie oben ein.")
