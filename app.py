@@ -1,7 +1,7 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import pandas_ta as ta # Neu für die technische Analyse
+import pandas_ta as ta # WICHTIG: Erfordert pandas_ta in requirements.txt
 
 # --- APP KONFIGURATION ---
 st.set_page_config(page_title="Prognose-Radar 2026", layout="wide")
@@ -15,22 +15,21 @@ timeframe = st.sidebar.selectbox("Basis-Zeitraum für Wachstum", [1, 5, 10], ind
 min_growth = st.sidebar.slider("Mindest-Wachstum (%)", 0.0, 30.0, 3.0)
 min_vol = st.sidebar.slider("Volumen-Faktor", 1.0, 10.0, 2.0)
 
-# --- FUNKTION: SCORE BERECHNEN ---
+# --- FUNKTION: SCORE BERECHNEN (DIE PROGNOSE-LOGIK) ---
 def calculate_momentum_score(df):
     score = 0
-    # 1. RSI Check (Sweet Spot zwischen 50 und 75)
+    # 1. RSI Check (Trendstärke messen)
     rsi = df.ta.rsi(length=14).iloc[-1]
-    if 50 < rsi < 75: score += 40
-    elif rsi >= 75: score += 10 # Überkauft-Gefahr
+    if 50 < rsi < 75: score += 40 # Optimaler Trendbereich
+    elif rsi >= 75: score += 10    # Heißgelaufen (Rückschlaggefahr)
     
-    # 2. Close-to-High Check (Schlusskurs nahe Tageshoch?)
+    # 2. Strong Close Check (Käuferinteresse zum Börsenschluss)
     day_high = df['High'].iloc[-1]
     day_low = df['Low'].iloc[-1]
     day_close = df['Close'].iloc[-1]
     
-    # Wie nah am Hoch? (0 = Tief, 1 = Hoch)
     position_in_range = (day_close - day_low) / (day_high - day_low) if (day_high - day_low) != 0 else 0
-    if position_in_range > 0.8: score += 40 # Starker Schlusskurs
+    if position_in_range > 0.8: score += 40 # Schließt am Tageshoch = Sehr Bullisch
     elif position_in_range > 0.5: score += 20
     
     # 3. Volumen-Bestätigung
@@ -62,6 +61,7 @@ if st.button('🚀 Prognose-Scan starten'):
     status.text("Analysiere Marktdaten und berechne Wahrscheinlichkeiten...")
     
     try:
+        # Batch-Download für maximale Geschwindigkeit
         all_data = yf.download(ticker_list, period="40d", group_by='ticker', progress=False)
         results = []
         
@@ -70,18 +70,15 @@ if st.button('🚀 Prognose-Scan starten'):
                 df = all_data[t].dropna()
                 if len(df) < 20: continue
                 
-                # Wachstum
                 price_now = df['Close'].iloc[-1]
                 price_prev = df['Close'].iloc[-1 - timeframe]
                 growth = ((price_now - price_prev) / price_prev) * 100
                 
-                # Volumen
                 vol_ratio = df['Volume'].iloc[-1] / df['Volume'].iloc[-21:-1].mean()
                 
                 if growth >= min_growth and vol_ratio >= min_vol:
                     score, rsi = calculate_momentum_score(df)
                     
-                    # Prognose-Label
                     if score >= 70: trend = "🟢 STARK (Kaufen)"
                     elif score >= 40: trend = "🟡 NEUTRAL (Beobachten)"
                     else: trend = "🔴 SCHWACH (Vorsicht)"
@@ -98,9 +95,10 @@ if st.button('🚀 Prognose-Scan starten'):
             
         status.text("Scan abgeschlossen.")
         if results:
+            # Sortierung nach dem höchsten Prognose-Score
             st.dataframe(pd.DataFrame(results).sort_values(by="Prognose-Score", ascending=False), use_container_width=True)
         else:
-            st.warning("Keine Treffer mit diesen Kriterien.")
+            st.warning("Keine Treffer gefunden. Lockere die Filter in der Seitenleiste.")
             
     except Exception as e:
-        st.error(f"Fehler: {e}")
+        st.error(f"Kritischer Fehler: {e}")
