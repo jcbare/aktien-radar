@@ -4,9 +4,10 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 
-# --- 1. SETUP TELEGRAM (Deine Daten sind fest eingebaut) ---
-TELEGRAM_TOKEN = "8786526859:AAF5JZEiWJLf8qun1WWeyAeRzBG6AEXgCGg"
-TELEGRAM_CHAT_ID = "1033631991"
+# --- SETUP TELEGRAM (Sicher aus den Secrets laden) ---
+# Wir greifen jetzt auf den "Tresor" zu, statt den Token hier hinzuschreiben
+TELEGRAM_TOKEN = st.secrets["TELEGRAM_TOKEN"]
+TELEGRAM_CHAT_ID = st.secrets["TELEGRAM_CHAT_ID"]
 
 def send_telegram_msg(message):
     try:
@@ -14,7 +15,7 @@ def send_telegram_msg(message):
         payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}
         requests.post(url, data=payload)
     except Exception as e:
-        st.sidebar.error(f"Telegram Fehler: {e}")
+        pass
 
 # --- 2. HILFSFUNKTIONEN ---
 def load_tickers():
