@@ -96,28 +96,37 @@ if st.button('🚀 SCAN STARTEN', use_container_width=True):
                 if (c_now - df['Low'].iloc[-1]) / (df['High'].iloc[-1] - df['Low'].iloc[-1]) > 0.8: score += 40
                 if vol_ratio > 2: score += 20
                 
-                # ZUSATZDATEN FÜR TOP TREFFER
-                isin_val = "N/A"
+                # --- PROFESSIONELLER ISIN-ABRUF ---
+                isin_val = "Nicht gefunden"
                 sentiment_label = "Neutral"
+                
                 if score >= 70:
-                    ticker_obj = yf.Ticker(t)
-                    # ISIN mit zwei Versuchen holen
+                    t_obj = yf.Ticker(t)
+                    
+                    # 3-Stufen-Plan für die ISIN
                     try:
-                        # Weg 1: Direkter Schnellzugriff
-                        isin_raw = ticker_obj.isin
+                        # Stufe 1: Der schnelle Standard-Weg
+                        res_isin = t_obj.isin
                         
-                        # Weg 2: Falls Weg 1 leer ist, aus den Info-Daten (gründlicher)
-                        if not isin_raw or isin_raw == "-":
-                            isin_raw = ticker_obj.get_info().get('isin')
-                            
-                        isin_val = str(isin_raw) if isin_raw and isin_raw != "-" else "Nicht gefunden"
-                    except: 
-                        isin_val = "Momentan n.v." # Falls Yahoo den Zugriff drosselt
+                        # Stufe 2: Falls Stufe 1 leer, tief in die 'Info' graben
+                        if not res_isin or res_isin == "-":
+                            info = t_obj.get_info()
+                            res_isin = info.get('isin')
+                        
+                        # Stufe 3: Letzter Versuch über alternative Metadata
+                        if not res_isin:
+                            res_isin = t_obj.fast_info.get('isin')
 
-                    # Sentiment holen
-                    sent_val, _ = get_sentiment_data(ticker_obj)
-                    if sent_val > 0.15: sentiment_label = "Positiv 🟢"
-                    elif sent_val < -0.15: sentiment_label = "Negativ 🔴"
+                        isin_val = str(res_isin) if res_isin else "N/A (Yahoo Limit)"
+                    except:
+                        isin_val = "Timeout"
+
+                    # News Sentiment
+                    try:
+                        sent_val, _ = get_sentiment_data(t_obj)
+                        if sent_val > 0.15: sentiment_label = "Positiv 🟢"
+                        elif sent_val < -0.15: sentiment_label = "Negativ 🔴"
+                    except: pass
 
                 results.append({
                     "Ticker": t, "Broker": t_map.get(t, "-"), "Wachstum": growth, 
