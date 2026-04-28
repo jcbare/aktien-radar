@@ -101,12 +101,19 @@ if st.button('🚀 SCAN STARTEN', use_container_width=True):
                 sentiment_label = "Neutral"
                 if score >= 70:
                     ticker_obj = yf.Ticker(t)
-                    # ISIN holen
+                    # ISIN mit zwei Versuchen holen
                     try:
+                        # Weg 1: Direkter Schnellzugriff
                         isin_raw = ticker_obj.isin
+                        
+                        # Weg 2: Falls Weg 1 leer ist, aus den Info-Daten (gründlicher)
+                        if not isin_raw or isin_raw == "-":
+                            isin_raw = ticker_obj.get_info().get('isin')
+                            
                         isin_val = str(isin_raw) if isin_raw and isin_raw != "-" else "Nicht gefunden"
-                    except: isin_val = "Fehler"
-                    
+                    except: 
+                        isin_val = "Momentan n.v." # Falls Yahoo den Zugriff drosselt
+
                     # Sentiment holen
                     sent_val, _ = get_sentiment_data(ticker_obj)
                     if sent_val > 0.15: sentiment_label = "Positiv 🟢"
